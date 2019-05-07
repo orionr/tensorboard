@@ -67,6 +67,9 @@ class CorePlugin(base_plugin.TBPlugin):
   def is_active(self):
     return True
 
+  def reload_logdir(self, logdir):
+    self._logdir = logdir
+
   def get_plugin_apps(self):
     apps = {
         '/___rPc_sWiTcH___': self._send_404_without_logging,
@@ -475,11 +478,16 @@ flag.\
             'Must specify either --logdir or --event_file, but not both.')
       if not (flags.logdir or flags.event_file):
         raise FlagsError('Must specify either --logdir or --event_file.')
-    elif not flags.db and not flags.logdir:
-      raise FlagsError('A logdir or db must be specified. '
-                       'For example `tensorboard --logdir mylogdir` '
-                       'or `tensorboard --db sqlite:~/.tensorboard.db`. '
+    elif not flags.db and not flags.logdir and not flags.ondemand:
+      raise FlagsError('A logdir, db, or ondemand must be specified. '
+                       'For example `tensorboard --logdir mylogdir`, '
+                       '`tensorboard --db sqlite:~/.tensorboard.db`, '
+                       '`tensorboard --ondemand`. '
                        'Run `tensorboard --helpfull` for details and examples.')
+
+    if flags.ondemand:
+      # Don't recurse current dir in On Demand mode
+      flags.logdir = 'ondemand'
 
     if flags.path_prefix.endswith('/'):
       flags.path_prefix = flags.path_prefix[:-1]
