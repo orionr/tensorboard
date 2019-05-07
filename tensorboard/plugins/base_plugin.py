@@ -24,6 +24,13 @@ from __future__ import print_function
 
 from abc import ABCMeta
 from abc import abstractmethod
+import time
+import uuid
+
+
+# TODO(orionr): Upstream to tensorflow/tensorboard for logdir update
+class ServiceUnavailableError(Exception):
+    pass
 
 
 class TBPlugin(object):
@@ -72,6 +79,10 @@ class TBPlugin(object):
       A boolean value. Whether this plugin is active.
     """
     raise NotImplementedError()
+
+
+# TODO(orionr): Upstream to tensorflow/tensorboard for logdir update
+TTL = 300
 
 
 class TBContext(object):
@@ -144,6 +155,43 @@ class TBContext(object):
     self.multiplexer = multiplexer
     self.plugin_name_to_instance = plugin_name_to_instance
     self.window_title = window_title
+
+    # TODO(orionr): Upstream to tensorflow/tensorboard for logdir update
+    self.logdir_reload_listeners = []
+    self.listen_to_logdir_reload(multiplexer)
+    self.transaction_id = None
+    self.last_active_ts = None
+
+  # TODO(orionr): Upstream to tensorflow/tensorboard for logdir update
+  def listen_to_logdir_reload(self, listener):
+    self.logdir_reload_listeners.append(listener)
+
+  # TODO(orionr): Upstream to tensorflow/tensorboard for logdir update
+  # We want to control the concurrent number of logdir being servced at the
+  # same time (the degenerated case is serving only 1 logdir at a time).
+  #
+  # If we are not able to serve the new logidr, throw an exception
+  def reload_logdir(self, logdir):
+    if self.logdir == logdir:
+      self.ping(self.transaction_id)
+      return
+
+    if self.last_active_ts and (time.time() - self.last_active_ts < TTL):
+      raise ServiceUnavailableError("Cannot handle more transactions for now")
+
+    # TODO maintain a transaction pool in LRU form so that one server
+    # instance is able to handle multiple concurrent transactions
+    self.transaction_id = uuid.uuid4().hex
+    self.last_active_ts = time.time()
+
+    self.logdir = logdir
+    for listener in self.logdir_reload_listeners:
+      listener.reload_logdir(logdir)
+
+  # TODO(orionr): Upstream to tensorflow/tensorboard for logdir update
+  def ping(self, transaction_id):
+    if self.transaction_id == transaction_id:
+      self.last_active_ts = time.time()
 
 
 class TBLoader(object):

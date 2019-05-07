@@ -111,6 +111,17 @@ class EventMultiplexer(object):
         self.AddRun(path, run)
     logger.info('Event Multiplexer done initializing')
 
+  # TODO(orionr): Upstream to tensorflow/tensorboard for logdir update
+  def reload_logdir(self, logdir):
+    """Clear and reloads all runs from a directory."""
+    if logdir:
+      logdir = os.path.expanduser(logdir)
+      with self._accumulators_mutex:
+        self._accumulators.clear()
+        self._paths.clear()
+      self.AddRunsFromDirectory(logdir)
+      self.Reload()
+
   def AddRun(self, path, name=None):
     """Add a run to the multiplexer.
 

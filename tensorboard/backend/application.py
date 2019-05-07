@@ -157,11 +157,12 @@ def standard_tensorboard_wsgi(flags, plugin_loaders, assets_zip_provider):
     plugin_name_to_instance[plugin.plugin_name] = plugin
   return TensorBoardWSGIApp(flags.logdir, plugins, loading_multiplexer,
                             reload_interval, flags.path_prefix,
-                            reload_task)
+                            reload_task, context, flags.ondemand)
 
 
 def TensorBoardWSGIApp(logdir, plugins, multiplexer, reload_interval,
-                       path_prefix='', reload_task='auto'):
+                       path_prefix='', reload_task='auto',
+                       context=None, ondemand=False):
   """Constructs the TensorBoard application.
 
   Args:
@@ -174,6 +175,8 @@ def TensorBoardWSGIApp(logdir, plugins, multiplexer, reload_interval,
       Zero means reload just once at startup; negative means never load.
     path_prefix: A prefix of the path when app isn't served from root.
     reload_task: Indicates the type of background task to reload with.
+    context: The server context.
+    ondemand: A boolean whether On Demand is enabled or not.
 
   Returns:
     A WSGI application that implements the TensorBoard backend.
@@ -190,13 +193,13 @@ def TensorBoardWSGIApp(logdir, plugins, multiplexer, reload_interval,
     # continuously reload the multiplexer.
     start_reloading_multiplexer(multiplexer, path_to_run, reload_interval,
                                 reload_task)
-  return TensorBoardWSGI(plugins, path_prefix)
+  return TensorBoardWSGI(plugins, path_prefix, context, ondemand)
 
 
 class TensorBoardWSGI(object):
   """The TensorBoard WSGI app that delegates to a set of TBPlugin."""
 
-  def __init__(self, plugins, path_prefix=''):
+  def __init__(self, plugins, path_prefix='', context=None, ondemand=False):
     """Constructs TensorBoardWSGI instance.
 
     Args:
@@ -221,6 +224,10 @@ class TensorBoardWSGI(object):
       self._path_prefix = path_prefix[:-1]
     else:
       self._path_prefix = path_prefix
+
+    # TODO(orionr): Upstream to tensorflow/tensorboard for logdir update
+    self.context = context
+    self.ondemand = ondemand
 
     self.data_applications = {
         # TODO(@chihuahua): Delete this RPC once we have skylark rules that
@@ -247,7 +254,7 @@ class TensorBoardWSGI(object):
       try:
         plugin_apps = plugin.get_plugin_apps()
       except Exception as e:  # pylint: disable=broad-except
-        if type(plugin) is core_plugin.CorePlugin:  # pylint: disable=unidiomatic-typecheck
+        if isinstance(plugin, core_plugin.CorePlugin):  # pylint: disable=unidiomatic-typecheck
           raise
         logger.warn('Plugin %s failed. Exception: %s',
                            plugin.plugin_name, str(e))
@@ -257,7 +264,7 @@ class TensorBoardWSGI(object):
           raise ValueError('Plugin named %r handles invalid route %r: '
                            'route does not start with a slash' %
                            (plugin.plugin_name, route))
-        if type(plugin) is core_plugin.CorePlugin:  # pylint: disable=unidiomatic-typecheck
+        if isinstance(plugin, core_plugin.CorePlugin):  # pylint: disable=unidiomatic-typecheck
           path = self._path_prefix + route
         else:
           path = (self._path_prefix + DATA_PREFIX + PLUGIN_PREFIX + '/' +
